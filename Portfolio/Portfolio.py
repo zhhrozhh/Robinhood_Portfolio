@@ -32,7 +32,7 @@ class Portfolio:
         self.name = name
         self.trader = trader
         self.bp = iniFund
-        if iniFund == None or iniFund >= float(trader.get_account()['margin_balances']['unallocated_margin_cash']):
+        if iniFund == None or iniFund >= float(trader.get_account()['margin_balances']['unallocated_margin_cash'])*0.7:
             self.bp = float(trader.get_account()['margin_balances']['unallocated_margin_cash'])*0.7
             
             
