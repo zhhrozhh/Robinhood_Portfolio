@@ -3,6 +3,7 @@ import datetime
 import json
 import numpy as np
 import pandas as pd
+import os
 import matplotlib.pyplot as plt
 from scipy.optimize import minimize
 from Robinhood import Order
@@ -12,13 +13,15 @@ from threading import Thread
 from threading import Lock
 
 
+
 class Portfolio:
     def __init__(
         self,
         trader = None,
         name = None,
         iniFund = None,
-        load_from = None
+        load_from = None,
+        cancel_count = np.inf
     ):
         """
         create portfolio or load from save
@@ -32,6 +35,7 @@ class Portfolio:
         self.name = name
         self.trader = trader
         self.bp = iniFund
+        self.threads = []
         if iniFund == None or iniFund >= float(trader.get_account()['margin_balances']['unallocated_margin_cash'])*0.7:
             self.bp = float(trader.get_account()['margin_balances']['unallocated_margin_cash'])*0.7
             
@@ -49,6 +53,8 @@ class Portfolio:
         
         self.log = []
         self.log_lock = Lock()
+        
+        self.cancel_count = cancel_count
     def get_last_price(self):
         """
         get last trading price for any asset in this portfolio
@@ -95,7 +101,7 @@ class Portfolio:
                 self.log_lock.release()
                 return 
             instrument = self.trader.instruments(scode)[0]
-            order = self.trader.place_buy_order(instrument,n)
+            order = self.trader.place_market_buy_order(instrument,n)
             if order is None:
                 self.log_lock.acquire()
                 self.log.append(
@@ -104,9 +110,10 @@ class Portfolio:
                 self.log_lock.release()
                 return
             self.queue_lock.acquire()
-            self.queue.append([scode,order])
+            self.queue.append([scode,order,0])
             self.queue_lock.release()
         t = Thread(target = market_buy_worker)
+        self.threads.append(t)
         t.start()
         
     def market_sell(self,scode,n):
@@ -117,14 +124,19 @@ class Portfolio:
         n (int): shares to sell
         """
         def market_sell_worker():
+            assert scode in self.portfolio_record.index
+            self.portfolio_record_lock.acquire()
             if self.portfolio_record.loc[scode]["SHARES"] < n:
+                self.portfolio_record_lock.release()
                 self.log_lock.acquire()
                 self.log.append(
                     "{}: no enough shares for this portfolio to sell {} shares of {}".format(self.now(),n,scode)
                 )
                 self.log_lock.release()
+                return
+            self.portfolio_record_lock.release()
             instrument = self.trader.instruments(scode)[0]
-            order = self.trader.place_sell_order(instrument,n)
+            order = self.trader.place_market_sell_order(instrument,n)
             if order.order is None:
                 self.log_lock.acquire()
                 self.log.append(
@@ -132,9 +144,10 @@ class Portfolio:
                 )
                 return
             self.queue_lock.acquire()
-            self.queue.append([scode,order])
+            self.queue.append([scode,order,0])
             self.queue_lock.release()
         t = Thread(target = market_sell_worker)
+        self.threads.append(t)
         t.start()
     
     def confirm_order(self):
@@ -146,52 +159,51 @@ class Portfolio:
             if not len(self.queue):
                 self.queue_lock.release()
                 return
-            scode,order = *self.queue.pop(0)
+            scode,order,cc = self.queue.pop(0)
             self.queue_lock.release()
             d = order.check()
             if not len(d['executions']):
                 self.queue_lock.acquire()
-                self.queue.append([scode,order])
+                if cc >= self.cancel_count:
+                    order.cancel()
+                else:
+                    self.queue.append([scode,order,cc+1])
                 self.queue_lock.release()
                 return
             
-            ex_amount = d['executions']['quantity']
-            ex_price = scode,d['executions']['price']
+            ex_amount = float(d['executions'][0]['quantity'])
+            ex_price = float(d['executions'][0]['price'])
             ex_side = d['side']
             
             if ex_side == 'sell':
                 ex_amount = - ex_amount
             
             self.trading_record_lock.acquire()
-            self.trading_record.loc[d['executions']['timestamp']] = [ex_side,ex_price,ex_amount,d['type']]
-            self.trade_record_lock.release()
+            self.trading_record.loc[d['executions'][0]['timestamp']] = [ex_side,scode,ex_price,abs(ex_amount),d['type']]
+            self.trading_record_lock.release()
         
             self.portfolio_record_lock.acquire()
             if scode not in self.portfolio_record.index:
                 hold_amount = 0
                 avg_cost = 0
             else:
-                hold_amount = self.portfolio_record['SHARES']
-                avg_cost = self.portfolio_record['AVG_COST']
-            
-            
-            
+                hold_amount = self.portfolio_record.loc[scode]['SHARES']
+                avg_cost = self.portfolio_record.loc[scode]['AVG_COST']
+
             total_cost = hold_amount*avg_cost + ex_price*ex_amount
             neo_shares = hold_amount + ex_amount
             self.bp = self.bp - total_cost
             if neo_shares == 0:
-                self.protfolio_record.drop(scode)
-                self.protfolio_record_lock.release()
+                self.portfolio_record.drop(scode)
+                self.portfolio_record_lock.release()
                 return
             
             neo_avg_cost = total_cost/neo_shares
-            self.protfolio_record.loc[scode] = [neo_avg_cost,neo_shares]
-            self.protfolio_record_lock.release()
+            self.portfolio_record.loc[scode] = [neo_avg_cost,neo_shares]
+            self.portfolio_record_lock.release()
         t = Thread(target = confirm_worker)
         t.start()
-
-            
-            
+ 
     def transfer_shares(self,oth = None,scode = None,amount = None,direction = 'to'):
         """
         transfer shares from one portfolio to another
@@ -212,7 +224,7 @@ class Portfolio:
                 oth.protfolio_record_lock.release()
                 self.log_lock.acquire()
                 self.log.append(
-                    "{}: target portfolio doesnt have enough shares to transfer ({},{})".format(self.now(),scode,amount)
+                    "{}: target portfolio doesnt have enough shares to transfer ({},{})".format(self.get_time(),scode,amount)
                 )
                 self.log_lock.release()
                 return
@@ -229,8 +241,6 @@ class Portfolio:
             else:
                 original_avg_cost = self.portfolio_record.loc[scode]["AVG_COST"]
                 original_hold = self.portfolio_record.loc[scode]["SHARES"]
-            
-            
             neo_avg_cost = (original_avg_cost*original_hold + amount*transfer_price)/(original_hold+amount)
             self.portfolio_record.loc[scode] = [neo_avg_cost,original_hold+amount]
             self.portfolio_record_lock.release()
@@ -250,12 +260,101 @@ class Portfolio:
             if oth.bp < amount:
                 self.log_lock.acquire()
                 self.log.append(
-                    "{}: target portfolio doesnt have enough buying power to transfer ({})".format(self.now(),amount)
+                    "{}: target portfolio doesnt have enough buying power to transfer ({})".format(self.get_time(),amount)
                 )
-                self.log_loc.release()
+                self.log_lock.release()
                 return 
             oth.bp -= amount
             self.bp += amount
         if direction == 'to':
             other.transfer(self,amount,'from')
             
+            
+    def cancel_all_orders_in_queue(self):
+        self.queue_lock.acquire()
+        while len(self.queue):
+            scode,order = self.queue.pop()
+            order.cancel()
+        self.queue_lock.release()
+        
+    def add_shares_from_pool(self,scode = None,n = None):
+        """
+        add share from account equity to portfolio
+        currently, one should make sure the sum of # of shares in each portfolio is less than the 
+        total holding shares manually when using it. A portfolio manager class will be created 
+        to handle this later
+        
+        scode (str): symbol for the stock to be added
+        n (int|float): amount to be added
+        """
+        owned = self.trader.securities_owned()['results']
+        target_ins = self.trader.instruments(scode)[0]["url"]
+        d = None
+        for ins in owned:
+            if ins['instrument'] == target_ins:
+                d = ins
+                break
+        if d is None:
+            self.log_lock.acquire()
+            self.log.append(
+                "{}: dont have {} in your pool".format(self.get_time(),scode)
+            )
+            self.log_lock.release()
+            return
+        owned_shares = float(d['quantity'])
+        if n > owned_shares:
+            self.log_lock.acquire()
+            self.log.append(
+                "{}: dont have enough shares of {} in you pool".format(self.get_time(),scode)
+            )
+            self.log_lock.release()
+            return
+        n_avg_cost = float(d['average_buy_price'])
+        self.portfolio_record_lock.acquire()
+        if scode not in self.portfolio_record:
+            avg_cost = 0
+            shares = 0
+        else:
+            avg_cost = self.portfolio_record.loc[scode]['AVG_COST']
+            shares = self.portfolio_record.loc[scode]['SHARES']
+        neo_shares = shares + n
+        neo_cost = (avg_cost*shares + n_avg_cost*n)/neo_shares
+        self.portfolio_record.loc[scode] = [neo_cost,neo_shares]
+        self.portfolio_record_lock.release()
+        
+            
+        
+    def set_bp_HARD(self,bp):
+        """
+        force buying power to be bp, by default, the maximum buying power of a portforlio cannot exceed 70%
+        of total buying power in case the buying order thread processed before a concurrent selling order.
+        when a market buying order goes with a market selling order at the same time, set the force_buy parameter
+        of market_buy if the buying power for buying order comes from the selling order's return.
+        
+        bp (float): buying power
+        """
+        total_bp = float(self.trader.get_account()['margin_balances']['unallocated_margin_cash'])
+        self.bp = min(bp,total_bp)
+    def save(self,savdir = None,root_name = ''):
+        for t in self.threads:
+            t.join()
+        if savdir is None:
+            savdir = self.name
+        
+        fdir = root_name+savdir+'/'
+        if not os.path.exists(fdir):
+            os.mkdir(fdir)
+        self.trading_record.to_csv(fdir+"trading.csv")
+        self.portfolio_record.to_csv(fdir+"portfolio.csv")
+        pd.DataFrame([[self.bp]]).to_csv(fdir+"bp")
+        with open(fdir+"log{}.log".format(self.get_time()).replace(' ','').replace(':','.'),'w') as f:
+            for log in self.log:
+                f.write(log+"\n")
+    def load(self,savdir = None,root_name = ''):
+        if savdir is None:
+            savdir = self.name
+        fdir = root_name + savdir + '/'
+        assert os.path.exists(fdir)
+        self.trading_record = pd.DataFrame.from_csv(fdir+"trading.csv")
+        self.portfolio_record = pd.DataFrame.from_csv(fdir+"portfolio.csv")
+        self.bp = pd.DataFrame.from_csv(fdir+"bp").values[0][0]
