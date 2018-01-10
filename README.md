@@ -17,13 +17,32 @@ orders executed concurrently, so please make sure there are extra buying power t
 - save portfolio info to hard disk(`Portfolio.save`)(`TESTED`)
 - load portfolio into memory('Portfolio.load')(`TESTED`)
 - More coming soon
-
+### TODO:
+    check if market is open
+    add PortfolioManager class to manage multiple portfolios
+    add loop_confirm method that keeps on confirming until signal received
+    add sample trading algorithm demos
 ### How To Install:
     TODO
     
 
 ### How to Use 
-    TODO
+    trader = Robinhood(username,password)
+    name = 'Default'
+    p = Portfolio(trader,name,load_from = 'path to save')
+    def worker():
+        while True:
+            p.confirm_order()
+            sleep(time_between_two_confirms)
+    t = Thread(target = worker)
+    t.start()
+
+    while True:
+        """your trading algorithms goes here"""
+        if buy_condition:
+            p.market_buy(stock,amount)
+        if sell_condition:
+            p.market_sell(stock,amount)
 
 
 
