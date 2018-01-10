@@ -50,4 +50,4 @@ orders executed concurrently, so please make sure there are extra buying power t
 
 # Related
 
-* [robinhood-python framework](https://github.com/zhhrozhh/Robinhood) - python framework to use data from robinhood
+* [robinhood-python framework](https://github.com/zhhrozhh/Robinhood) - robinhood api package used for this project
