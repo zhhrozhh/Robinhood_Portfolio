@@ -35,6 +35,7 @@ class Portfolio:
         self.name = name
         self.trader = trader
         self.bp = iniFund
+        self.confirm_signal = 1
         self.threads = []
         if iniFund == None or iniFund >= float(trader.get_account()['margin_balances']['unallocated_margin_cash'])*0.7:
             self.bp = float(trader.get_account()['margin_balances']['unallocated_margin_cash'])*0.7
@@ -84,16 +85,17 @@ class Portfolio:
         self.portfolio_record_lock.release()
         return res
     
-    def market_buy(self,scode,n,force_buy = False):
+    def market_buy(self,scode,n,force_buy = False,time_in_force = 'gfd'):
         """
         buy stock with market order
         
         scode (str): symbol of stock
         n (int): shares to buy
-        force_buy(bool): allow using back up buying power(exception when there isnt any) to buy
+        force_buy (bool): allow using back up buying power(exception when there isnt any) to buy
+        time_in_force (str): gfd ,gtc ,ioc ,fok or opg
         """
         def market_buy_worker():
-            if self.bp < float(self.trader.last_trade_price(scode)[0][0])*n*1.05 and not force_buy:
+            if self.bp < float(self.trader.last_trade_price(scode)[0][0])*n*1.005 and not force_buy:
                 self.log_lock.acquire()
                 self.log.append(
                     "{}: no enough buying power for this portfolio to buy {} shares of {}".format(self.now(),n,scode)
@@ -101,7 +103,7 @@ class Portfolio:
                 self.log_lock.release()
                 return 
             instrument = self.trader.instruments(scode)[0]
-            order = self.trader.place_market_buy_order(instrument,n)
+            order = self.trader.place_market_buy_order(instrument,n,time_in_force=time_in_force)
             if order is None:
                 self.log_lock.acquire()
                 self.log.append(
@@ -116,12 +118,13 @@ class Portfolio:
         self.threads.append(t)
         t.start()
         
-    def market_sell(self,scode,n):
+    def market_sell(self,scode,n,time_in_force = 'gfd'):
         """
         sell stock with market order
         
         scode (str): symbol of stock
         n (int): shares to sell
+        time_in_force (str): gfd ,gtc ,ioc ,fok or opg
         """
         def market_sell_worker():
             assert scode in self.portfolio_record.index
@@ -136,12 +139,13 @@ class Portfolio:
                 return
             self.portfolio_record_lock.release()
             instrument = self.trader.instruments(scode)[0]
-            order = self.trader.place_market_sell_order(instrument,n)
+            order = self.trader.place_market_sell_order(instrument,n,time_in_force = time_in_force)
             if order.order is None:
                 self.log_lock.acquire()
                 self.log.append(
                     "{}: fail to place market sell order {} shares of {}".format(self.now(),n,scode)
                 )
+                self.log_lock.release()
                 return
             self.queue_lock.acquire()
             self.queue.append([scode,order,0])
@@ -150,6 +154,244 @@ class Portfolio:
         self.threads.append(t)
         t.start()
     
+    def stop_loss_buy(self,scode,stop_price,n,force_buy = False,time_in_force = 'gtc'):
+        """
+        buy stock with stop order
+        
+        scode (str): symbol of stock to buy
+        stop_price (float): stop_price
+        force_buy (bool): allow buying with buck up buying power
+        time_in_force (str): gfd ,gtc ,ioc ,fok or opg
+        """
+        def stop_buy_worker():
+            if self.bp < float(self.trader.last_trade_price(scode)[0][0])*n*1.005 and not force_buy:
+                self.log_lock.acquire()
+                self.log.append(
+                    "{}: no enough buying power for this portfolio to buy {} shares of {}".format(self.now(),n,scode)
+                )
+                self.log_lock.release()
+                return 
+            instrument = self.trader.instruments(scode)[0]
+            order = self.trader.place_stop_loss_buy_order(
+                instrument,
+                n,
+                stop_price = stop_price,
+                time_in_force = time_in_force
+            )
+            if order is None:
+                self.log_lock.acquire()
+                self.log.append(
+                    "{}: fail to place stop loss buy order {} shares of {}".format(self.now(),n,scode)
+                )
+                self.log_lock.release()
+                return
+            self.queue_lock.acquire()
+            self.queue.append([scode,order,0])
+            self.queue_lock.release()
+        t = Thread(target = stop_buy_worker)
+        self.threads.append(t)
+        t.start()
+    def stop_loss_sell(self,scode,stop_price,n,time_in_force = 'gtc'):
+        """
+        sell stock with stop order
+        
+        scode (str): symbol of stock
+        n (int): shares to sell
+        time_in_force (str): gfd ,gtc ,ioc ,fok or opg
+        """
+        def stop_sell_worker():
+            assert scode in self.portfolio_record.index
+            self.portfolio_record_lock.acquire()
+            if self.portfolio_record.loc[scode]["SHARES"] < n:
+                self.portfolio_record_lock.release()
+                self.log_lock.acquire()
+                self.log.append(
+                    "{}: no enough shares for this portfolio to sell {} shares of {}".format(self.now(),n,scode)
+                )
+                self.log_lock.release()
+                return
+            self.portfolio_record_lock.release()
+            instrument = self.trader.instruments(scode)[0]
+            order = self.trader.place_stop_loss_sell_order(
+                instrument,
+                n,
+                stop_price = stop_price,
+                time_in_force = time_in_force
+            )
+            if order.order is None:
+                self.log_lock.acquire()
+                self.log.append(
+                    "{}: fail to place stop loss sell order {} shares of {}".format(self.now(),n,scode)
+                )
+                self.log_lock.release()
+                return
+            self.queue_lock.acquire()
+            self.queue.append([scode,order,0])
+            self.queue_lock.release()
+        t = Thread(target = stop_sell_worker)
+        self.threads.append(t)
+        t.start()
+        
+
+    def limit_buy(self,scode,price,n,force_buy = False,time_in_force = 'gtc'):
+        """
+        buy stock with limit order
+        
+        scode (str): symbol of stock
+        n (int): shares to sell
+        time_in_force (str): gfd ,gtc ,ioc ,fok or opg
+        """
+        def limit_buy_worker():
+            if self.bp < float(self.trader.last_trade_price(scode)[0][0])*n*1.005 and not force_buy:
+                self.log_lock.acquire()
+                self.log.append(
+                    "{}: no enough buying power for this portfolio to buy {} shares of {}".format(self.now(),n,scode)
+                )
+                self.log_lock.release()
+                return 
+            instrument = self.trader.instruments(scode)[0]
+            order = self.trader.place_limit_buy_order(
+                instrument,
+                n,
+                price = price,
+                time_in_force = time_in_force
+            )
+            if order is None:
+                self.log_lock.acquire()
+                self.log.append(
+                    "{}: fail to place limit buy order {} shares of {}".format(self.now(),n,scode)
+                )
+                self.log_lock.release()
+                return
+            self.queue_lock.acquire()
+            self.queue.append([scode,order,0])
+            self.queue_lock.release()
+        t = Thread(target = limit_buy_worker)
+        self.threads.append(t)
+        t.start()
+        
+    def limit_sell(self,scode,price,n,time_in_force = 'gtc'):
+        """
+        sell stock with limit order
+        
+        scode (str): symbol of stock
+        n (int): shares to sell
+        time_in_force (str): gfd ,gtc ,ioc ,fok or opg
+        """
+        def limit_sell_worker():
+            assert scode in self.portfolio_record.index
+            self.portfolio_record_lock.acquire()
+            if self.portfolio_record.loc[scode]["SHARES"] < n:
+                self.portfolio_record_lock.release()
+                self.log_lock.acquire()
+                self.log.append(
+                    "{}: no enough shares for this portfolio to sell {} shares of {}".format(self.now(),n,scode)
+                )
+                self.log_lock.release()
+                return
+            self.portfolio_record_lock.release()
+            instrument = self.trader.instruments(scode)[0]
+            order = self.trader.place_limit_sell_order(
+                instrument,
+                n,
+                price = price,
+                time_in_force = time_in_force
+            )
+            if order.order is None:
+                self.log_lock.acquire()
+                self.log.append(
+                    "{}: fail to place limit sell order {} shares of {}".format(self.now(),n,scode)
+                )
+                self.log_lock.release()
+                return
+            self.queue_lock.acquire()
+            self.queue.append([scode,order,0])
+            self.queue_lock.release()
+        t = Thread(target = limit_sell_worker)
+        self.threads.append(t)
+        t.start()        
+        
+        
+    def stop_limit_buy(self,scode,stop_price,n,force_buy = False,time_in_force = 'gtc'):
+        """
+        buy stock with stop limit order
+        
+        scode (str): symbol of stock to buy
+        stop_price (float): stop_price
+        force_buy (bool): allow buying with buck up buying power
+        time_in_force (str): gfd ,gtc ,ioc ,fok or opg
+        """
+        def stop_limit_buy_worker():
+            if self.bp < float(self.trader.last_trade_price(scode)[0][0])*n*1.005 and not force_buy:
+                self.log_lock.acquire()
+                self.log.append(
+                    "{}: no enough buying power for this portfolio to buy {} shares of {}".format(self.now(),n,scode)
+                )
+                self.log_lock.release()
+                return 
+            instrument = self.trader.instruments(scode)[0]
+            order = self.trader.place_stop_limit_buy_order(
+                instrument,
+                n,
+                stop_price = stop_price,
+                time_in_force = time_in_force
+            )
+            if order is None:
+                self.log_lock.acquire()
+                self.log.append(
+                    "{}: fail to place stop loss buy order {} shares of {}".format(self.now(),n,scode)
+                )
+                self.log_lock.release()
+                return
+            self.queue_lock.acquire()
+            self.queue.append([scode,order,0])
+            self.queue_lock.release()
+        t = Thread(target = stop_limit_buy_worker)
+        self.threads.append(t)
+        t.start()
+    def stop_limit_sell(self,scode,stop_price,n,time_in_force = 'gtc'):
+        """
+        sell stock with stop limit order
+        
+        scode (str): symbol of stock
+        n (int): shares to sell
+        time_in_force (str): gfd ,gtc ,ioc ,fok or opg
+        """
+        def stop_limit_sell_worker():
+            assert scode in self.portfolio_record.index
+            self.portfolio_record_lock.acquire()
+            if self.portfolio_record.loc[scode]["SHARES"] < n:
+                self.portfolio_record_lock.release()
+                self.log_lock.acquire()
+                self.log.append(
+                    "{}: no enough shares for this portfolio to sell {} shares of {}".format(self.now(),n,scode)
+                )
+                self.log_lock.release()
+                return
+            self.portfolio_record_lock.release()
+            instrument = self.trader.instruments(scode)[0]
+            order = self.trader.place_stop_limit_sell_order(
+                instrument,
+                n,
+                stop_price = stop_price,
+                time_in_force = time_in_force
+            )
+            if order.order is None:
+                self.log_lock.acquire()
+                self.log.append(
+                    "{}: fail to place stop limit sell order {} shares of {}".format(self.now(),n,scode)
+                )
+                self.log_lock.release()
+                return
+            self.queue_lock.acquire()
+            self.queue.append([scode,order,0])
+            self.queue_lock.release()
+        t = Thread(target = stop_limit_sell_worker)
+        self.threads.append(t)
+        t.start()
+        
+        
+
     def confirm_order(self):
         """
         check whether submitted orders had been executed
@@ -162,6 +404,22 @@ class Portfolio:
             scode,order,cc = self.queue.pop(0)
             self.queue_lock.release()
             d = order.check()
+            if d['state'] in ['rejected','cancelled']:
+                self.log_lock.acquire()
+                self.log.append(
+                    "{}: order ({},{} {} {} {}) {} for unknown reason".format(
+                        self.get_time(),
+                        scode,
+                        d['quantity'],
+                        d['trigger'],
+                        d['type'],
+                        d['side'],
+                        d['state']
+                    )
+                )
+                self.log_lock.release()
+                return
+
             if not len(d['executions']):
                 self.queue_lock.acquire()
                 if cc >= self.cancel_count:
@@ -246,6 +504,7 @@ class Portfolio:
             self.portfolio_record_lock.release()
         if direction == 'to':
             other.transfer(self,scode,amount,direction = 'from')
+            
     def transfer_buying_power(self,oth = None,amount = None,direction = 'to'):
         """
         transfer buying power from one portfolio to another
@@ -271,6 +530,9 @@ class Portfolio:
             
             
     def cancel_all_orders_in_queue(self):
+        """
+        cancel all orders in the queue that havent been executed yet
+        """
         self.queue_lock.acquire()
         while len(self.queue):
             scode,order = self.queue.pop()
@@ -322,8 +584,6 @@ class Portfolio:
         self.portfolio_record.loc[scode] = [neo_cost,neo_shares]
         self.portfolio_record_lock.release()
         
-            
-        
     def set_bp_HARD(self,bp):
         """
         force buying power to be bp, by default, the maximum buying power of a portforlio cannot exceed 70%
@@ -335,7 +595,11 @@ class Portfolio:
         """
         total_bp = float(self.trader.get_account()['margin_balances']['unallocated_margin_cash'])
         self.bp = min(bp,total_bp)
+        
     def save(self,savdir = None,root_name = ''):
+        """
+        save portfolio to files
+        """
         for t in self.threads:
             t.join()
         if savdir is None:
@@ -350,7 +614,11 @@ class Portfolio:
         with open(fdir+"log{}.log".format(self.get_time()).replace(' ','').replace(':','.'),'w') as f:
             for log in self.log:
                 f.write(log+"\n")
+                
     def load(self,savdir = None,root_name = ''):
+        """
+        load portfolio info from files
+        """
         if savdir is None:
             savdir = self.name
         fdir = root_name + savdir + '/'
@@ -358,3 +626,10 @@ class Portfolio:
         self.trading_record = pd.DataFrame.from_csv(fdir+"trading.csv")
         self.portfolio_record = pd.DataFrame.from_csv(fdir+"portfolio.csv")
         self.bp = pd.DataFrame.from_csv(fdir+"bp").values[0][0]
+        
+        
+                
+        
+
+
+        
