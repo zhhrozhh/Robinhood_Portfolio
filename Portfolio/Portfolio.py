@@ -35,7 +35,7 @@ class Portfolio:
         self.name = name
         self.trader = trader
         self.bp = iniFund
-        self.confirm_signal = 1
+        self.confirm_signal = True
         self.threads = []
         if iniFund == None or iniFund >= float(trader.get_account()['margin_balances']['unallocated_margin_cash'])*0.7:
             self.bp = float(trader.get_account()['margin_balances']['unallocated_margin_cash'])*0.7
@@ -392,76 +392,95 @@ class Portfolio:
         
         
 
-    def confirm_order(self):
+    def confirm_order(self,loop = False,gap_time = 5):
         """
         check whether submitted orders had been executed
-        """
-        def confirm_worker():
-            self.queue_lock.acquire()
-            if not len(self.queue):
-                self.queue_lock.release()
-                return
-            scode,order,cc = self.queue.pop(0)
-            self.queue_lock.release()
-            d = order.check()
-            if d['state'] in ['rejected','cancelled']:
-                self.log_lock.acquire()
-                self.log.append(
-                    "{}: order ({},{} {} {} {}) {} for unknown reason".format(
-                        self.get_time(),
-                        scode,
-                        d['quantity'],
-                        d['trigger'],
-                        d['type'],
-                        d['side'],
-                        d['state']
-                    )
-                )
-                self.log_lock.release()
-                return
-
-            if not len(d['executions']):
-                self.queue_lock.acquire()
-                if cc >= self.cancel_count:
-                    order.cancel()
-                else:
-                    self.queue.append([scode,order,cc+1])
-                self.queue_lock.release()
-                return
-            
-            ex_amount = float(d['executions'][0]['quantity'])
-            ex_price = float(d['executions'][0]['price'])
-            ex_side = d['side']
-            
-            if ex_side == 'sell':
-                ex_amount = - ex_amount
-            
-            self.trading_record_lock.acquire()
-            self.trading_record.loc[d['executions'][0]['timestamp']] = [ex_side,scode,ex_price,abs(ex_amount),d['type']]
-            self.trading_record_lock.release()
         
-            self.portfolio_record_lock.acquire()
-            if scode not in self.portfolio_record.index:
-                hold_amount = 0
-                avg_cost = 0
-            else:
-                hold_amount = self.portfolio_record.loc[scode]['SHARES']
-                avg_cost = self.portfolio_record.loc[scode]['AVG_COST']
+        loop (bool): confirm once or keep on comfirming until signal received
+        gap_time (float|int): pause between two confirms, in sec
+        """
+        gap_time = float(gap_time)
+        if not self.confirm_signal:
+            self.confirm_signal = True
+        assert gap_time > 0
+        def confirm_worker():
+            if loop:
+                self.log_lock.acquire()
+                self.log.append("{}: confirm, start".format(self.get_time()))
+                self.log_lock.release()
+            while self.confirm_signal:
+                sleep(gap_time)
+                self.queue_lock.acquire()
+                if not len(self.queue):
+                    self.queue_lock.release()
+                    continue
+                scode,order,cc = self.queue.pop(0)
+                self.queue_lock.release()
+                d = order.check()
+                if d['state'] in ['rejected','cancelled']:
+                    self.log_lock.acquire()
+                    self.log.append(
+                        "{}: order ({},{} {} {} {}) {} for unknown reason".format(
+                            self.get_time(),
+                            scode,
+                            d['quantity'],
+                            d['trigger'],
+                            d['type'],
+                            d['side'],
+                            d['state']
+                        )
+                    )
+                    self.log_lock.release()
+                    continue
 
-            total_cost = hold_amount*avg_cost + ex_price*ex_amount
-            neo_shares = hold_amount + ex_amount
-            self.bp = self.bp - total_cost
-            if neo_shares == 0:
-                self.portfolio_record.drop(scode)
+                if not len(d['executions']):
+                    self.queue_lock.acquire()
+                    if cc >= self.cancel_count:
+                        order.cancel()
+                    else:
+                        self.queue.append([scode,order,cc+1])
+                    self.queue_lock.release()
+                    continue
+
+                ex_amount = float(d['executions'][0]['quantity'])
+                ex_price = float(d['executions'][0]['price'])
+                ex_side = d['side']
+
+                if ex_side == 'sell':
+                    ex_amount = - ex_amount
+
+                self.trading_record_lock.acquire()
+                self.trading_record.loc[d['executions'][0]['timestamp']] = [ex_side,scode,ex_price,abs(ex_amount),d['type']]
+                self.trading_record_lock.release()
+
+                self.portfolio_record_lock.acquire()
+                if scode not in self.portfolio_record.index:
+                    hold_amount = 0
+                    avg_cost = 0
+                else:
+                    hold_amount = self.portfolio_record.loc[scode]['SHARES']
+                    avg_cost = self.portfolio_record.loc[scode]['AVG_COST']
+
+                total_cost = hold_amount*avg_cost + ex_price*ex_amount
+                neo_shares = hold_amount + ex_amount
+                self.bp = self.bp - total_cost
+                if neo_shares == 0:
+                    self.portfolio_record.drop(scode)
+                    self.portfolio_record_lock.release()
+                    continue
+
+                neo_avg_cost = total_cost/neo_shares
+                self.portfolio_record.loc[scode] = [neo_avg_cost,neo_shares]
                 self.portfolio_record_lock.release()
-                return
-            
-            neo_avg_cost = total_cost/neo_shares
-            self.portfolio_record.loc[scode] = [neo_avg_cost,neo_shares]
-            self.portfolio_record_lock.release()
+                if not loop:
+                    break
+            if loop:
+                self.log_lock.acquire()
+                self.log.append("{}: confirm, end".format(self.get_time()))
         t = Thread(target = confirm_worker)
         t.start()
- 
+    def stop_confirm(self):
+        self.confirm_signal = False
     def transfer_shares(self,oth = None,scode = None,amount = None,direction = 'to'):
         """
         transfer shares from one portfolio to another
@@ -596,6 +615,38 @@ class Portfolio:
         total_bp = float(self.trader.get_account()['margin_balances']['unallocated_margin_cash'])
         self.bp = min(bp,total_bp)
         
+    def is_market_open(self):
+        """
+        check if a market is open,
+        
+        have no clue what timezone did robinhood use for market hour,
+        official api says it is US/Eastern, but the market hour returned from api is obviously not US/Eastern
+        
+        so to check the current time with the timezone robinhood used,
+        a buy order will be placed to see the created time returned by api
+        
+        the placed order will normally be rejected or this method will cancel it immediately.
+        
+        shoud not call this method too frequently
+        """
+        u = self.trader.place_stop_limit_buy_order(
+            instrument = self.trader.instruments('BAC')[0],
+            quantity=1,
+            stop_price=0.01
+        )
+        now = datetime.datetime.strptime(u.check()['created_at'],"%Y-%m-%dT%H:%M:%S.%fZ")
+        u.cancel()
+        y = now.year
+        m = now.month
+        d = now.day
+        info = self.trader.session.get('https://api.robinhood.com/markets/XNAS/hours/{}-{}-{}/'.format(y,m,d)).json()
+        if not info['is_open']:
+            return False
+        opens_at = datetime.datetime.strptime(info['opens_at'],"%Y-%m-%dT%H:%M:%SZ")
+        closes_at = datetime.datetime.strptime(info['closes_at'],"%Y-%m-%dT%H:%M:%SZ")
+        return now<=closes_at and now >=opens_at
+        
+        
     def save(self,savdir = None,root_name = ''):
         """
         save portfolio to files
@@ -629,7 +680,4 @@ class Portfolio:
         
         
                 
-        
-
-
         
