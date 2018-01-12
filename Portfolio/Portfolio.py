@@ -646,7 +646,20 @@ class Portfolio:
         closes_at = datetime.datetime.strptime(info['closes_at'],"%Y-%m-%dT%H:%M:%SZ")
         return now<=closes_at and now >=opens_at
         
+    def shares_owned(self,scode):
+        """
+        get number of shares of a stock in this portfolio
         
+        scode (str): symbol of stock
+        """
+        self.portfolio_record_lock.acquire()
+        if scode not in self.portfolio_record.index:
+            self.portfolio_record_lock.release()
+            return 0
+        res = self.portfolio_record.loc[scode]["SHARES"]
+        self.portfolio_record_lock.release()
+        return res
+             
     def save(self,savdir = None,root_name = ''):
         """
         save portfolio to files
@@ -680,4 +693,3 @@ class Portfolio:
         
         
                 
-        
