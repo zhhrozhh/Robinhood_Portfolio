@@ -1,5 +1,2 @@
 pandas>=0.20.1
 numpy>=1.12.1
-scipy>=0.19.0
-Robinhood>=1.0.2
-Quandl>=3.2.0
