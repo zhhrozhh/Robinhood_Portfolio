@@ -4,7 +4,6 @@ import json
 import numpy as np
 import pandas as pd
 import os
-import matplotlib.pyplot as plt
 from scipy.optimize import minimize
 from Robinhood import Order
 from Robinhood import WatchList
@@ -56,6 +55,15 @@ class Portfolio:
         self.log_lock = Lock()
         
         self.cancel_count = cancel_count
+        if load_from is not None:
+            self.load(savdir = load_from)
+
+    def add_trading_record(self,*record):
+        assert len(record) == 5
+        self.trading_record_lock.acquire()
+        self.trading_record.loc[self.get_time()] = record
+        self.trading_record_lock.release()
+
     def get_last_price(self):
         """
         get last trading price for any asset in this portfolio
@@ -450,7 +458,7 @@ class Portfolio:
                     ex_amount = - ex_amount
 
                 self.trading_record_lock.acquire()
-                self.trading_record.loc[d['executions'][0]['timestamp']] = [ex_side,scode,ex_price,abs(ex_amount),d['type']]
+                self.trading_record.loc[self.get_time()] = [ex_side,scode,ex_price,abs(ex_amount),d['type']]
                 self.trading_record_lock.release()
 
                 self.portfolio_record_lock.acquire()
@@ -479,8 +487,10 @@ class Portfolio:
                 self.log.append("{}: confirm, end".format(self.get_time()))
         t = Thread(target = confirm_worker)
         t.start()
+
     def stop_confirm(self):
         self.confirm_signal = False
+
     def transfer_shares(self,oth = None,scode = None,amount = None,direction = 'to'):
         """
         transfer shares from one portfolio to another
@@ -496,20 +506,20 @@ class Portfolio:
         assert direction in ['from','to']
         amount = int(amount)
         if direction == 'from':
-            oth.protfolio_record_lock.acquire()
-            if (oth.protfolio_record.loc[scode]["SHARES"] < amount):
-                oth.protfolio_record_lock.release()
+            oth.portfolio_record_lock.acquire()
+            if (oth.portfolio_record.loc[scode]["SHARES"] < amount):
+                oth.portfolio_record_lock.release()
                 self.log_lock.acquire()
                 self.log.append(
                     "{}: target portfolio doesnt have enough shares to transfer ({},{})".format(self.get_time(),scode,amount)
                 )
                 self.log_lock.release()
                 return
-            oth.protfolio_record.loc[scode]["SHARES"] -= amount
-            transfer_price = oth.protfolio_record.loc[scode]["AVG_COST"]
-            if oth.protfolio_record.loc[scode]["SHARES"] == 0:
-                oth.protfolio_record.pop(scode)
-            oth.protfolio_record_lock.release()
+            oth.portfolio_record.loc[scode]["SHARES"] -= amount
+            transfer_price = oth.portfolio_record.loc[scode]["AVG_COST"]
+            if oth.portfolio_record.loc[scode]["SHARES"] == 0:
+                oth.portfolio_record = oth.portfolio_record.drop(scode)
+            oth.portfolio_record_lock.release()
             
             self.portfolio_record_lock.acquire()
             if scode not in self.portfolio_record.index:
@@ -521,8 +531,10 @@ class Portfolio:
             neo_avg_cost = (original_avg_cost*original_hold + amount*transfer_price)/(original_hold+amount)
             self.portfolio_record.loc[scode] = [neo_avg_cost,original_hold+amount]
             self.portfolio_record_lock.release()
+            self.add_trading_record("None",scode,transfer_price,amount,"transfer in")
+            oth.add_trading_record("None",scode,transfer_price,amount,"transfer out")
         if direction == 'to':
-            other.transfer(self,scode,amount,direction = 'from')
+            oth.transfer_shares(self,scode,amount,direction = 'from')
             
     def transfer_buying_power(self,oth = None,amount = None,direction = 'to'):
         """
@@ -545,7 +557,7 @@ class Portfolio:
             oth.bp -= amount
             self.bp += amount
         if direction == 'to':
-            other.transfer(self,amount,'from')
+            oth.transfer_buying_power(self,amount,'from')
             
             
     def cancel_all_orders_in_queue(self):
