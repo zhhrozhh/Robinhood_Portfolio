@@ -32,7 +32,7 @@ orders executed concurrently, so please make sure there are extra buying power t
     add sample trading algorithm demos
 
 ### How To Install:
-    install Robinhood from https://github.com/zhhrozhh/Robinhood first
+    install Robinhood from `https://github.com/zhhrozhh/Robinhood` first
     pip3 install .
     
 
