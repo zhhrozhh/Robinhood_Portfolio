@@ -5,7 +5,15 @@ class SIconverter:
         trader = None,
         load = None
         ):
+        """
+        Convert between stock symbol and instrument
+
+        buffer_size (int): size of cache to be used to store information loaded from http request
+        trader (Robinhood): trader to send requests
+        load (None): None
+        """
         assert trader is not None
+        buffer_size = int(buffer_size)
         assert buffer_size > 0
         self.buffer_size = buffer_size
         self.SI =  {}
@@ -16,6 +24,7 @@ class SIconverter:
         self.trader = trader
 
     def query_S2I(self,scode):
+
         if scode not in self.SI:
             try:
                 self.SI[scode] = self.trader.instruments(scode)[0]['url']
