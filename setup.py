@@ -4,7 +4,7 @@ from setuptools import setup,find_packages
 from setuptools.command.test import test as TestCommand
 
 HERE = path.abspath(path.dirname(__file__))
-__version__ = "0.0.1.20"
+__version__ = "0.0.1.32"
 REQUIRES = [
     'pandas>=0.20.1',
     'numpy>=1.12.1',

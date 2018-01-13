@@ -69,11 +69,17 @@ class Portfolio:
         get last trading price for any asset in this portfolio
         """
         self.portfolio_record_lock.acquire()
+        if not len(self.portfolio_record.index):
+            self.portfolio_record_lock.release()
+            return np.array([])
         res = np.array(
-            trader.last_trade_price(','.join(self.portfolio_record.index))
+            self.trader.last_trade_price(','.join(self.portfolio_record.index))
         )[:,0].astype(np.float32)
         self.portfolio_record_lock.release()
         return res
+
+    def quote_last_price(self,*scodes):
+        return np.array(self.trader.last_trade_price(','.join(scodes)))[:,0].astype(np.float32)
     
     def get_time(self):
         """
@@ -86,12 +92,15 @@ class Portfolio:
         get market value of current portfolio
         """
         self.portfolio_record_lock.acquire()
+        srs = self.portfolio_record["SHARES"].values
+        self.portfolio_record_lock.release()
         res = np.dot(
             self.get_last_price(),
-            self.portfolio_record["SHARES"].values
-        )+self.bp
-        self.portfolio_record_lock.release()
-        return res
+            srs
+        )
+        if res is None:
+            return self.bp
+        return res+self.bp
     
     def market_buy(self,scode,n,force_buy = False,time_in_force = 'gfd'):
         """
@@ -671,7 +680,25 @@ class Portfolio:
         res = self.portfolio_record.loc[scode]["SHARES"]
         self.portfolio_record_lock.release()
         return res
-             
+
+    def get_weights(self,*scodes):
+        res = {}
+        mv = self.get_market_value()
+        lp = pd.Series(self.get_last_price(),index = self.portfolio_record.index)
+        self.portfolio_record_lock.acquire()
+        for scode in scodes:
+            if scode not in self.portfolio_record.index:
+                res[scode] = 0
+            else:
+                res[scode] = (lp.loc[scode]*self.portfolio_record.loc[scode]["SHARES"])/mv
+        self.portfolio_record_lock.release()
+        return res
+
+    def unlock_all(self):
+        self.portfolio_record_lock.release()
+        self.log_lock.release()
+        self.trading_record_lock.release()
+
     def save(self,savdir = None,root_name = ''):
         """
         save portfolio to files
