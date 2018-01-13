@@ -1,8 +1,9 @@
 from Robinhood import Robinhood
 from .Portfolio import Portfolio
 from .SIconverter import SIconverter
-
+from time import sleep
 import numpy as np
+from threading import Thread
 class PortfolioMgr:
     def __init__(
         self,
@@ -31,6 +32,8 @@ class PortfolioMgr:
             self.converter(d['instrument']):int(float(d['quantity'])) for d in self.trader.securities_owned()['results']
         }
         self.portfolios = {}
+        self.regisiter = {}
+        self.working_now = True
         
         
     def add_portfolio(
@@ -182,4 +185,75 @@ class PortfolioMgr:
         assert from_name in self.portfolios
         assert to_name in self.portfolios
         self.portfolios[from_name].transfer_shares(self.portfolios[to_name],scode,amount)
+
+    def schedule(
+        self,
+        algo = None,
+        method = None,
+        portfolio_name = None,
+        freq = None,
+        misc = None
+        ):
+        assert portfolio_name not in self.regisiter
+        assert algo is not None
+        assert method is not None
+        assert freq is not None
+        p = self.portfolios[portfolio_name]
+        def worker():
+            p.confirm_order(loop = True)
+            while self.working_now:
+                try:
+                    algo.__getattribute__(method)(
+                        self,
+                        pname = portfolio_name,
+                        args = {
+                            "call_from_mgr" : True
+                        },
+                        misc = misc
+                        )
+                except AssertionError:
+                    p.unlock_all()
+                    p.log_lock.acquire()
+                    p.log.append("{}: Error Operation During Trading".format(Portfolio.get_now()))
+                    p.log_lock.release()
+                sleep(freq*60)
+            p.unlock_all()
+            p.stop_confirm()
+            p.cancel_all_orders_in_queue()
+            self.regisiter[portfolio_name][0] = 'STOPED'
+        
+        self.regisiter[portfolio_name] = ["PENDING",worker]
+        if self.working_now:
+            self.regisiter[portfolio_name] = ["STARTED",worker]
+            t = Thread(target = worker)
+            t.start()
+
+
+    def check_work(self):
+        if not len(self.portfolios):
+            self.working_now = False
+        if self.portfolios.values()[0].is_market_open():
+            self.working_now = True
+            for key in self.regisiter:
+                s,w = self.regisiter[key]
+                if s != 'STARTED':
+                    t = Thread(target = w)
+                    t.start()
+                    self.regisiter[key][0] = 'STARTED'
+        else:
+            self.working_now = False
+
+    def save(self,sav = None):
+        if sav is None:
+            sav = self.name
+        sav = sav + '/'
+        for k,p in self.portfolios.items():
+            p.save(root_name = sav)
+
+    def load(self,sav = None):
+        if sav is None:
+            sav = self.name
+        sav = sav + '/'
+        for k,p in self.portfolios.items():
+            p.load(root_name = sav)
         

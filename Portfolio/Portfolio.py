@@ -61,7 +61,7 @@ class Portfolio:
     def add_trading_record(self,*record):
         assert len(record) == 5
         self.trading_record_lock.acquire()
-        self.trading_record.loc[self.get_time()] = record
+        self.trading_record.loc[Portfolio.get_time()] = record
         self.trading_record_lock.release()
 
     def get_last_price(self):
@@ -81,7 +81,7 @@ class Portfolio:
     def quote_last_price(self,*scodes):
         return np.array(self.trader.last_trade_price(','.join(scodes)))[:,0].astype(np.float32)
     
-    def get_time(self):
+    def get_time():
         """
         get current time
         """
@@ -423,7 +423,7 @@ class Portfolio:
         def confirm_worker():
             if loop:
                 self.log_lock.acquire()
-                self.log.append("{}: confirm, start".format(self.get_time()))
+                self.log.append("{}: confirm, start".format(Portfolio.get_time()))
                 self.log_lock.release()
             while self.confirm_signal:
                 sleep(gap_time)
@@ -438,7 +438,7 @@ class Portfolio:
                     self.log_lock.acquire()
                     self.log.append(
                         "{}: order ({},{} {} {} {}) {} for unknown reason".format(
-                            self.get_time(),
+                            Portfolio.get_time(),
                             scode,
                             d['quantity'],
                             d['trigger'],
@@ -467,7 +467,7 @@ class Portfolio:
                     ex_amount = - ex_amount
 
                 self.trading_record_lock.acquire()
-                self.trading_record.loc[self.get_time()] = [ex_side,scode,ex_price,abs(ex_amount),d['type']]
+                self.trading_record.loc[Portfolio.get_time()] = [ex_side,scode,ex_price,abs(ex_amount),d['type']]
                 self.trading_record_lock.release()
 
                 self.portfolio_record_lock.acquire()
@@ -493,7 +493,7 @@ class Portfolio:
                     break
             if loop:
                 self.log_lock.acquire()
-                self.log.append("{}: confirm, end".format(self.get_time()))
+                self.log.append("{}: confirm, end".format(Portfolio.get_time()))
         t = Thread(target = confirm_worker)
         t.start()
 
@@ -520,7 +520,7 @@ class Portfolio:
                 oth.portfolio_record_lock.release()
                 self.log_lock.acquire()
                 self.log.append(
-                    "{}: target portfolio doesnt have enough shares to transfer ({},{})".format(self.get_time(),scode,amount)
+                    "{}: target portfolio doesnt have enough shares to transfer ({},{})".format(Portfolio.get_time(),scode,amount)
                 )
                 self.log_lock.release()
                 return
@@ -559,7 +559,7 @@ class Portfolio:
             if oth.bp < amount:
                 self.log_lock.acquire()
                 self.log.append(
-                    "{}: target portfolio doesnt have enough buying power to transfer ({})".format(self.get_time(),amount)
+                    "{}: target portfolio doesnt have enough buying power to transfer ({})".format(Portfolio.get_time(),amount)
                 )
                 self.log_lock.release()
                 return 
@@ -599,7 +599,7 @@ class Portfolio:
         if d is None:
             self.log_lock.acquire()
             self.log.append(
-                "{}: dont have {} in your pool".format(self.get_time(),scode)
+                "{}: dont have {} in your pool".format(Portfolio.get_time(),scode)
             )
             self.log_lock.release()
             return
@@ -607,7 +607,7 @@ class Portfolio:
         if n > owned_shares:
             self.log_lock.acquire()
             self.log.append(
-                "{}: dont have enough shares of {} in you pool".format(self.get_time(),scode)
+                "{}: dont have enough shares of {} in you pool".format(Portfolio.get_time(),scode)
             )
             self.log_lock.release()
             return
@@ -714,7 +714,7 @@ class Portfolio:
         self.trading_record.to_csv(fdir+"trading.csv")
         self.portfolio_record.to_csv(fdir+"portfolio.csv")
         pd.DataFrame([[self.bp]]).to_csv(fdir+"bp")
-        with open(fdir+"log{}.log".format(self.get_time()).replace(' ','').replace(':','.'),'w') as f:
+        with open(fdir+"log{}.log".format(Portfolio.get_time()).replace(' ','').replace(':','.'),'w') as f:
             for log in self.log:
                 f.write(log+"\n")
                 
