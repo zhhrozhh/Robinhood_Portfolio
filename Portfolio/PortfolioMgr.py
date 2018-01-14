@@ -4,6 +4,7 @@ from .SIconverter import SIconverter
 from time import sleep
 import numpy as np
 from threading import Thread
+from threading import Condition
 class PortfolioMgr:
     def __init__(
         self,
@@ -34,6 +35,7 @@ class PortfolioMgr:
         self.portfolios = {}
         self.regisiter = {}
         self.working_now = True
+        self.working_cv = Condition()
         
         
     def add_portfolio(
@@ -216,7 +218,9 @@ class PortfolioMgr:
                     p.log_lock.acquire()
                     p.log.append("{}: Error Operation During Trading".format(Portfolio.get_now()))
                     p.log_lock.release()
-                sleep(freq*60)
+                self.working_cv.acquire()
+                self.working_cv.wait(freq*60)
+                self.working_cv.release()
             p.unlock_all()
             p.stop_confirm()
             p.cancel_all_orders_in_queue()
@@ -232,7 +236,10 @@ class PortfolioMgr:
     def check_work(self):
         if not len(self.portfolios):
             self.working_now = False
-        if self.portfolios.values()[0].is_market_open():
+            self.working_cv.acquire()
+            self.working_cv.notifyAll()
+            self.working_cv.release()
+        if list(self.portfolios.values())[0].is_market_open():
             self.working_now = True
             for key in self.regisiter:
                 s,w = self.regisiter[key]
@@ -242,6 +249,9 @@ class PortfolioMgr:
                     self.regisiter[key][0] = 'STARTED'
         else:
             self.working_now = False
+            self.working_cv.acquire()
+            self.working_cv.notifyAll()
+            self.working_cv.release()
 
     def save(self,sav = None):
         if sav is None:

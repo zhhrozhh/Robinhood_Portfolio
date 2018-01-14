@@ -4,6 +4,7 @@ import json
 import numpy as np
 import pandas as pd
 import os
+from time import sleep
 from scipy.optimize import minimize
 from Robinhood import Order
 from Robinhood import WatchList
@@ -575,7 +576,7 @@ class Portfolio:
         """
         self.queue_lock.acquire()
         while len(self.queue):
-            scode,order = self.queue.pop()
+            scode,order,ct = self.queue.pop()
             order.cancel()
         self.queue_lock.release()
         
@@ -695,9 +696,18 @@ class Portfolio:
         return res
 
     def unlock_all(self):
-        self.portfolio_record_lock.release()
-        self.log_lock.release()
-        self.trading_record_lock.release()
+        try:
+            self.portfolio_record_lock.release()
+        except:
+            pass
+        try:
+            self.log_lock.release()
+        except:
+            pass
+        try:
+            self.trading_record_lock.release()
+        except:
+            pass
 
     def save(self,savdir = None,root_name = ''):
         """
