@@ -37,6 +37,8 @@ class PortfolioMgr:
         self.working_now = True
         self.working_cv = Condition()
         
+        self.check_work_v = True
+        self.check_work_cv = Condition()
         
     def add_portfolio(
         self,
@@ -201,6 +203,8 @@ class PortfolioMgr:
         assert method is not None
         assert freq is not None
         p = self.portfolios[portfolio_name]
+        if "cancel_count" in misc:
+            p.cancel_count = misc["cancel_count"]
         def worker():
             p.confirm_order(loop = True)
             while self.working_now:
@@ -231,6 +235,20 @@ class PortfolioMgr:
             self.regisiter[portfolio_name] = ["STARTED",worker]
             t = Thread(target = worker)
             t.start()
+
+    def cnow(self):
+        def worker():
+            while self.check_work_v:
+                check_work()
+                self.check_work_cv.acquire()
+                self.check_work_cv.wait(900)
+                self.check_work_cv.release()
+                
+    def dnow(self):
+        self.check_work_v = False
+        self.check_work_cv.acquire()
+        self.check_work_cv.notify()
+        self.check_work_cv.release()
 
 
     def check_work(self):
