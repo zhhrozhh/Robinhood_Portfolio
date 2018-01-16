@@ -54,6 +54,8 @@ class Portfolio:
         
         self.log = []
         self.log_lock = Lock()
+
+        self.threads = []
         
         self.cancel_count = cancel_count
         if load_from is not None:
@@ -455,6 +457,18 @@ class Portfolio:
                     self.queue_lock.acquire()
                     if cc >= self.cancel_count:
                         order.cancel()
+                        self.log_lock.acquire()
+                        self.log.append(
+                            "{}: order ({},{} {} {} {}) cancelled due to cancel count exceeded".format(
+                                Portfolio.get_time(),
+                                scode,
+                                d['quantity'],
+                                d['trigger'],
+                                d['type'],
+                                d['side'],
+                            )
+                        )
+                        self.log_lock.release()
                     else:
                         self.queue.append([scode,order,cc+1])
                     self.queue_lock.release()
@@ -495,6 +509,7 @@ class Portfolio:
             if loop:
                 self.log_lock.acquire()
                 self.log.append("{}: confirm, end".format(Portfolio.get_time()))
+                self.log_lock.release()
         t = Thread(target = confirm_worker)
         t.start()
 
@@ -579,6 +594,9 @@ class Portfolio:
             scode,order,ct = self.queue.pop()
             order.cancel()
         self.queue_lock.release()
+        self.log_lock.acquire()
+        self.log.append("{}: all orders in queue been cancelled")
+        self.log_lock.release()
         
     def add_shares_from_pool(self,scode = None,n = None):
         """
