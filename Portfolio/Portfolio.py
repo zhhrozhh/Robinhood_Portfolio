@@ -118,7 +118,7 @@ class Portfolio:
             if self.bp < float(self.trader.last_trade_price(scode)[0][0])*n*1.005 and not force_buy:
                 self.log_lock.acquire()
                 self.log.append(
-                    "{}: no enough buying power for this portfolio to buy {} shares of {}".format(self.now(),n,scode)
+                    "{}: no enough buying power for this portfolio to buy {} shares of {}".format(Portfolio.get_time(),n,scode)
                 )
                 self.log_lock.release()
                 return 
@@ -127,7 +127,7 @@ class Portfolio:
             if order is None:
                 self.log_lock.acquire()
                 self.log.append(
-                    "{}: fail to place market buy order {} shares of {}".format(self.now(),n,scode)
+                    "{}: fail to place market buy order {} shares of {}".format(Portfolio.get_time(),n,scode)
                 )
                 self.log_lock.release()
                 return
@@ -153,7 +153,7 @@ class Portfolio:
                 self.portfolio_record_lock.release()
                 self.log_lock.acquire()
                 self.log.append(
-                    "{}: no enough shares for this portfolio to sell {} shares of {}".format(self.now(),n,scode)
+                    "{}: no enough shares for this portfolio to sell {} shares of {}".format(Portfolio.get_time(),n,scode)
                 )
                 self.log_lock.release()
                 return
@@ -163,7 +163,7 @@ class Portfolio:
             if order.order is None:
                 self.log_lock.acquire()
                 self.log.append(
-                    "{}: fail to place market sell order {} shares of {}".format(self.now(),n,scode)
+                    "{}: fail to place market sell order {} shares of {}".format(Portfolio.get_time(),n,scode)
                 )
                 self.log_lock.release()
                 return
@@ -187,7 +187,7 @@ class Portfolio:
             if self.bp < float(self.trader.last_trade_price(scode)[0][0])*n*1.005 and not force_buy:
                 self.log_lock.acquire()
                 self.log.append(
-                    "{}: no enough buying power for this portfolio to buy {} shares of {}".format(self.now(),n,scode)
+                    "{}: no enough buying power for this portfolio to buy {} shares of {}".format(Portfolio.get_time(),n,scode)
                 )
                 self.log_lock.release()
                 return 
@@ -201,7 +201,7 @@ class Portfolio:
             if order is None:
                 self.log_lock.acquire()
                 self.log.append(
-                    "{}: fail to place stop loss buy order {} shares of {}".format(self.now(),n,scode)
+                    "{}: fail to place stop loss buy order {} shares of {}".format(Portfolio.get_time(),n,scode)
                 )
                 self.log_lock.release()
                 return
@@ -226,7 +226,7 @@ class Portfolio:
                 self.portfolio_record_lock.release()
                 self.log_lock.acquire()
                 self.log.append(
-                    "{}: no enough shares for this portfolio to sell {} shares of {}".format(self.now(),n,scode)
+                    "{}: no enough shares for this portfolio to sell {} shares of {}".format(Portfolio.get_time(),n,scode)
                 )
                 self.log_lock.release()
                 return
@@ -241,7 +241,7 @@ class Portfolio:
             if order.order is None:
                 self.log_lock.acquire()
                 self.log.append(
-                    "{}: fail to place stop loss sell order {} shares of {}".format(self.now(),n,scode)
+                    "{}: fail to place stop loss sell order {} shares of {}".format(sPortfolio.get_time(),n,scode)
                 )
                 self.log_lock.release()
                 return
@@ -265,7 +265,7 @@ class Portfolio:
             if self.bp < float(self.trader.last_trade_price(scode)[0][0])*n*1.005 and not force_buy:
                 self.log_lock.acquire()
                 self.log.append(
-                    "{}: no enough buying power for this portfolio to buy {} shares of {}".format(self.now(),n,scode)
+                    "{}: no enough buying power for this portfolio to buy {} shares of {}".format(Portfolio.get_time(),n,scode)
                 )
                 self.log_lock.release()
                 return 
@@ -279,7 +279,7 @@ class Portfolio:
             if order is None:
                 self.log_lock.acquire()
                 self.log.append(
-                    "{}: fail to place limit buy order {} shares of {}".format(self.now(),n,scode)
+                    "{}: fail to place limit buy order {} shares of {}".format(Portfolio.get_time(),n,scode)
                 )
                 self.log_lock.release()
                 return
@@ -305,7 +305,7 @@ class Portfolio:
                 self.portfolio_record_lock.release()
                 self.log_lock.acquire()
                 self.log.append(
-                    "{}: no enough shares for this portfolio to sell {} shares of {}".format(self.now(),n,scode)
+                    "{}: no enough shares for this portfolio to sell {} shares of {}".format(Portfolio.get_time(),n,scode)
                 )
                 self.log_lock.release()
                 return
@@ -320,7 +320,7 @@ class Portfolio:
             if order.order is None:
                 self.log_lock.acquire()
                 self.log.append(
-                    "{}: fail to place limit sell order {} shares of {}".format(self.now(),n,scode)
+                    "{}: fail to place limit sell order {} shares of {}".format(Portfolio.get_time(),n,scode)
                 )
                 self.log_lock.release()
                 return
@@ -345,7 +345,7 @@ class Portfolio:
             if self.bp < float(self.trader.last_trade_price(scode)[0][0])*n*1.005 and not force_buy:
                 self.log_lock.acquire()
                 self.log.append(
-                    "{}: no enough buying power for this portfolio to buy {} shares of {}".format(self.now(),n,scode)
+                    "{}: no enough buying power for this portfolio to buy {} shares of {}".format(Portfolio.get_time(),n,scode)
                 )
                 self.log_lock.release()
                 return 
@@ -359,7 +359,7 @@ class Portfolio:
             if order is None:
                 self.log_lock.acquire()
                 self.log.append(
-                    "{}: fail to place stop loss buy order {} shares of {}".format(self.now(),n,scode)
+                    "{}: fail to place stop loss buy order {} shares of {}".format(Portfolio.get_time(),n,scode)
                 )
                 self.log_lock.release()
                 return
@@ -384,7 +384,7 @@ class Portfolio:
                 self.portfolio_record_lock.release()
                 self.log_lock.acquire()
                 self.log.append(
-                    "{}: no enough shares for this portfolio to sell {} shares of {}".format(self.now(),n,scode)
+                    "{}: no enough shares for this portfolio to sell {} shares of {}".format(Portfolio.get_time(),n,scode)
                 )
                 self.log_lock.release()
                 return
@@ -399,7 +399,7 @@ class Portfolio:
             if order.order is None:
                 self.log_lock.acquire()
                 self.log.append(
-                    "{}: fail to place stop limit sell order {} shares of {}".format(self.now(),n,scode)
+                    "{}: fail to place stop limit sell order {} shares of {}".format(Portfolio.get_time(),n,scode)
                 )
                 self.log_lock.release()
                 return

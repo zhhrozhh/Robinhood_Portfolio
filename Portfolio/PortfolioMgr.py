@@ -127,7 +127,7 @@ class PortfolioMgr:
         assert name in self.portfolios
         self.update_allocatable_shares()
         amount = int(amount)
-        assert self.unassigned_shares[scode] > amount
+        assert self.unassigned_shares[scode] >= amount
         self.portfolios[name].add_shares_from_pool(scode = scode,n = amount)
         self.unassigned_shares[scode] -= amount
         self.portfolios[name].add_trading_record("None",scode,"None",amount,"add share")
@@ -220,7 +220,7 @@ class PortfolioMgr:
                 except AssertionError:
                     p.unlock_all()
                     p.log_lock.acquire()
-                    p.log.append("{}: Error Operation During Trading".format(Portfolio.get_now()))
+                    p.log.append("{}: Error Operation During Trading".format(Portfolio.get_time()))
                     p.log_lock.release()
                 self.working_cv.acquire()
                 self.working_cv.wait(freq*60)
