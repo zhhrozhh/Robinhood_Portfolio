@@ -632,7 +632,7 @@ class Portfolio:
             return
         n_avg_cost = float(d['average_buy_price'])
         self.portfolio_record_lock.acquire()
-        if scode not in self.portfolio_record:
+        if scode not in self.portfolio_record.index:
             avg_cost = 0
             shares = 0
         else:

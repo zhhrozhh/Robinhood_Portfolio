@@ -84,7 +84,10 @@ class PortfolioMgr:
         for k,p in self.portfolios.items():
             p.portfolio_record_lock.acquire()
             for scode in p.portfolio_record.index:
-                owned_shares[scode] -= p.portfolio_record.loc[scode]["SHARES"]
+                try:
+                    owned_shares[scode] -= p.portfolio_record.loc[scode]["SHARES"]
+                except:
+                    pass
             p.portfolio_record_lock.release()
         self.unassigned_shares = owned_shares
     
