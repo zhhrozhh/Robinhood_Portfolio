@@ -11,7 +11,7 @@ from Robinhood import WatchList
 from Robinhood import Robinhood
 from threading import Thread
 from threading import Lock
-
+from .SIconverter import SIconverter
 
 
 class Portfolio:
@@ -21,7 +21,8 @@ class Portfolio:
         name = None,
         iniFund = None,
         load_from = None,
-        cancel_count = np.inf
+        cancel_count = np.inf,
+        converter = None
     ):
         """
         create portfolio or load from save
@@ -32,6 +33,10 @@ class Portfolio:
         """
         assert trader is not None
         assert name is not None
+        if converter is None:
+            self.converter = SIconverter(trader = self.trader)
+        else:
+            self.converter = converter
         self.name = name
         self.trader = trader
         self.bp = iniFund
@@ -126,8 +131,14 @@ class Portfolio:
                 )
                 self.log_lock.release()
                 return 
-            instrument = self.trader.instruments(scode)[0]
-            order = self.trader.place_market_buy_order(instrument,n,time_in_force=time_in_force)
+            instrument = self.converter(scode)
+            #instrument = self.trader.instruments(scode)[0]
+            order = self.trader.place_market_buy_order(
+                instrument,
+                scode,
+                n,
+                time_in_force=time_in_force
+            )
             if order is None:
                 self.log_lock.acquire()
                 self.log.append(
@@ -162,8 +173,14 @@ class Portfolio:
                 self.log_lock.release()
                 return
             self.portfolio_record_lock.release()
-            instrument = self.trader.instruments(scode)[0]
-            order = self.trader.place_market_sell_order(instrument,n,time_in_force = time_in_force)
+            instrument = self.converter(scode)
+            #instrument = self.trader.instruments(scode)[0]
+            order = self.trader.place_market_sell_order(
+                instrument,
+                scode,
+                n,
+                time_in_force = time_in_force
+            )
             if order.order is None:
                 self.log_lock.acquire()
                 self.log.append(
@@ -194,10 +211,12 @@ class Portfolio:
                     "{}: no enough buying power for this portfolio to buy {} shares of {}".format(Portfolio.get_time(),n,scode)
                 )
                 self.log_lock.release()
-                return 
-            instrument = self.trader.instruments(scode)[0]
+                return
+            instrument = self.converter(scode)
+            #instrument = self.trader.instruments(scode)[0]
             order = self.trader.place_stop_loss_buy_order(
                 instrument,
+                scode,
                 n,
                 stop_price = stop_price,
                 time_in_force = time_in_force
@@ -235,9 +254,11 @@ class Portfolio:
                 self.log_lock.release()
                 return
             self.portfolio_record_lock.release()
-            instrument = self.trader.instruments(scode)[0]
+            instrument = self.converter(scode)
+            #instrument = self.trader.instruments(scode)[0]
             order = self.trader.place_stop_loss_sell_order(
                 instrument,
+                scode,
                 n,
                 stop_price = stop_price,
                 time_in_force = time_in_force
@@ -272,10 +293,11 @@ class Portfolio:
                     "{}: no enough buying power for this portfolio to buy {} shares of {}".format(Portfolio.get_time(),n,scode)
                 )
                 self.log_lock.release()
-                return 
-            instrument = self.trader.instruments(scode)[0]
+                return
+            instrument = self.converter(scode)
             order = self.trader.place_limit_buy_order(
                 instrument,
+                scode,
                 n,
                 price = price,
                 time_in_force = time_in_force
@@ -314,9 +336,10 @@ class Portfolio:
                 self.log_lock.release()
                 return
             self.portfolio_record_lock.release()
-            instrument = self.trader.instruments(scode)[0]
+            instrument = self.converter(scode)
             order = self.trader.place_limit_sell_order(
                 instrument,
+                scode,
                 n,
                 price = price,
                 time_in_force = time_in_force
@@ -352,10 +375,11 @@ class Portfolio:
                     "{}: no enough buying power for this portfolio to buy {} shares of {}".format(Portfolio.get_time(),n,scode)
                 )
                 self.log_lock.release()
-                return 
-            instrument = self.trader.instruments(scode)[0]
+                return
+            instrument = self.converter(scode)
             order = self.trader.place_stop_limit_buy_order(
                 instrument,
+                scode,
                 n,
                 stop_price = stop_price,
                 time_in_force = time_in_force
@@ -393,9 +417,10 @@ class Portfolio:
                 self.log_lock.release()
                 return
             self.portfolio_record_lock.release()
-            instrument = self.trader.instruments(scode)[0]
+            instrument = self.converter(scode)
             order = self.trader.place_stop_limit_sell_order(
                 instrument,
+                scode,
                 n,
                 stop_price = stop_price,
                 time_in_force = time_in_force
@@ -616,7 +641,7 @@ class Portfolio:
         n (int|float): amount to be added
         """
         owned = self.trader.securities_owned()['results']
-        target_ins = self.trader.instruments(scode)[0]["url"]
+        target_ins = self.trader.instruments(scode)["url"]
         d = None
         for ins in owned:
             if ins['instrument'] == target_ins:
@@ -677,7 +702,7 @@ class Portfolio:
         shoud not call this method too frequently
         """
         u = self.trader.place_stop_limit_buy_order(
-            instrument = self.trader.instruments('BAC')[0],
+            instrument = self.trader.instruments('BAC'),
             quantity=1,
             stop_price=0.01
         )

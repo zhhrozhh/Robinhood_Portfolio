@@ -65,7 +65,8 @@ class PortfolioMgr:
             trader = self.trader,
             name = name,
             iniFund = ini_bp,
-            cancel_count = np.inf
+            cancel_count = cancel_count,
+            converter = self.converter
         )
         self.unassigned_bp -= ini_bp
         

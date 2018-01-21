@@ -1,3 +1,5 @@
+from six.moves.urllib.parse import unquote
+
 class SIconverter:
     def __init__(
         self,
@@ -27,7 +29,7 @@ class SIconverter:
 
         if scode not in self.SI:
             try:
-                self.SI[scode] = self.trader.instruments(scode)[0]['url']
+                self.SI[scode] = unquote(self.trader.instruments(scode)['url'])
             except:
                 return None
             self.IS[self.SI[scode]] = scode
