@@ -39,6 +39,9 @@ class PortfolioMgr:
         
         self.check_work_v = True
         self.check_work_cv = Condition()
+
+        self.threads = []
+        self.log = []
         
     def add_portfolio(
         self,
@@ -201,6 +204,9 @@ class PortfolioMgr:
         freq = None,
         misc = None
         ):
+        """
+        schedule an algorithm with this portfolio
+        """
         assert portfolio_name not in self.regisiter
         assert algo is not None
         assert method is not None
@@ -228,6 +234,9 @@ class PortfolioMgr:
                 self.working_cv.acquire()
                 self.working_cv.wait(freq*60)
                 self.working_cv.release()
+            p.log_lock.acquire()
+            p.log.append("{}: {} worker stopped".format(Portfolio.get_time(),method))
+            p.log_lock.release()
             p.unlock_all()
             p.stop_confirm()
             p.cancel_all_orders_in_queue()
@@ -237,24 +246,41 @@ class PortfolioMgr:
         if self.working_now:
             self.regisiter[portfolio_name] = ["STARTED",worker]
             t = Thread(target = worker)
+            self.threads.append(t)
             t.start()
+            p.log_lock.acquire()
+            p.log.append("{}: {} worker started".format(Portfolio.get_time(),method))
+            p.log_lock.release()
 
     def cnow(self):
+        """
+        begin to check the market hour, once every 900 secs 
+        """
         def worker():
             while self.check_work_v:
                 check_work()
                 self.check_work_cv.acquire()
+                self.log.append("{}: check work cv waiting now".format(Portfolio.get_time()))
                 self.check_work_cv.wait(900)
+                self.log.append("{}: check work cv escaped")
                 self.check_work_cv.release()
                 
     def dnow(self):
+        """
+        stop checking the market hour
+        """
         self.check_work_v = False
+        self.log.append("{}: try down".format(Portfolio.get_time()))
         self.check_work_cv.acquire()
         self.check_work_cv.notify()
         self.check_work_cv.release()
+        self.log.append("{}: down scuu".format(Portfolio.get_time()))
 
 
     def check_work(self):
+        """
+        check the market hour, is market is open, all panding or stoped algorithm will start
+        """
         if not len(self.portfolios):
             self.working_now = False
             self.working_cv.acquire()
@@ -266,6 +292,7 @@ class PortfolioMgr:
                 s,w = self.regisiter[key]
                 if s != 'STARTED':
                     t = Thread(target = w)
+                    self.threads.append(t)
                     t.start()
                     self.regisiter[key][0] = 'STARTED'
         else:
@@ -274,7 +301,27 @@ class PortfolioMgr:
             self.working_cv.notifyAll()
             self.working_cv.release()
 
+    def quit(self):
+        """
+        quit this s**t
+        """
+        self.working_now = False
+        self.check_work_v = False
+        self.check_work_cv.acquire()
+        self.check_work_cv.notify()
+        self.check_work_cv.release()
+        self.working_cv.acquire()
+        self.working_cv.notify()
+        self.working_cv.release()
+        while len(self.threads):
+            self.threads.pop().join()
+        for p in list(self.portfolios.values()):
+            p.quit()
+
     def save(self,sav = None):
+        """
+        save
+        """
         if sav is None:
             sav = self.name
         sav = sav + '/'
@@ -282,6 +329,9 @@ class PortfolioMgr:
             p.save(root_name = sav)
 
     def load(self,sav = None):
+        """
+        load
+        """
         if sav is None:
             sav = self.name
         sav = sav + '/'

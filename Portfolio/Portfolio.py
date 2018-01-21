@@ -61,7 +61,11 @@ class Portfolio:
         if load_from is not None:
             self.load(savdir = load_from)
 
+
     def add_trading_record(self,*record):
+        """
+        add a trading record
+        """
         assert len(record) == 5
         self.trading_record_lock.acquire()
         self.trading_record.loc[Portfolio.get_time()] = record
@@ -514,6 +518,9 @@ class Portfolio:
         t.start()
 
     def stop_confirm(self):
+        """
+        stop confirming
+        """
         self.confirm_signal = False
 
     def transfer_shares(self,oth = None,scode = None,amount = None,direction = 'to'):
@@ -595,7 +602,7 @@ class Portfolio:
             order.cancel()
         self.queue_lock.release()
         self.log_lock.acquire()
-        self.log.append("{}: all orders in queue been cancelled")
+        self.log.append("{}: all orders in queue been cancelled".format(Portfolio.get_time()))
         self.log_lock.release()
         
     def add_shares_from_pool(self,scode = None,n = None):
@@ -701,6 +708,9 @@ class Portfolio:
         return res
 
     def get_weights(self,*scodes):
+        """
+        get weight of given assets in your portfolio 
+        """
         res = {}
         mv = self.get_market_value()
         lp = pd.Series(self.get_last_price(),index = self.portfolio_record.index)
@@ -714,6 +724,9 @@ class Portfolio:
         return res
 
     def unlock_all(self):
+        """
+        unlock all locked locks, in case of uncaught exceptions
+        """
         try:
             self.portfolio_record_lock.release()
         except:
@@ -731,7 +744,10 @@ class Portfolio:
         """
         save portfolio to files
         """
+        self.confirm_signal = False
+
         for t in self.threads:
+            self.unlock_all()
             t.join()
         if savdir is None:
             savdir = self.name
@@ -758,5 +774,13 @@ class Portfolio:
         self.portfolio_record = pd.DataFrame.from_csv(fdir+"portfolio.csv")
         self.bp = pd.DataFrame.from_csv(fdir+"bp").values[0][0]
         
-        
+    def quit(self):
+        """
+        get ready to quit
+        """
+        self.confirm_signal = False
+        for t in self.threads:
+            self.unlock_all()
+            t.join()
+
                 
