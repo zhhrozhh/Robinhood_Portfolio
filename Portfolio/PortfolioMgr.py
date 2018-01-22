@@ -139,7 +139,10 @@ class PortfolioMgr:
         self.unassigned_shares[scode] -= amount
         self.portfolios[name].add_trading_record("None",scode,"None",amount,"add share")
         
-    
+    def add_multi_shares_to(self,name,**sa):
+        for s,a in sa.items():
+            self.add_shares_to(name,s,a)
+
     def draw_bp_from(self,name,amount):
         """
         draw bp from a portfolio to mgr
