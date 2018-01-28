@@ -276,7 +276,15 @@ class Portfolio:
         t = Thread(target = stop_sell_worker)
         self.threads.append(t)
         t.start()
-        
+
+	def l_market_buy(self,scode,n,force_buy = False,time_in_force = 'gfd',tol = 0.003):
+		p = float(self.trader.last_trade_price(scode)[0][0])
+		self.limit_buy(scode,p*(1+tol),n,force_buy,time_in_force)
+
+	def l_market_sell(self,scode,n,time_in_force='gtc',tol = 0.003):
+		p = float(self.trader.last_trade_price(scode)[0][0])
+		self.limit_sell(scode,p*(1-tol),n,time_in_force)
+
 
     def limit_buy(self,scode,price,n,force_buy = False,time_in_force = 'gtc'):
         """
